@@ -20,13 +20,19 @@ const startBtn = document.getElementById('start-button');
 const restartBtn = document.getElementById('restart-button');
 
 // Game Constants
-const CANVAS_WIDTH = 1200;
-const CANVAS_HEIGHT = 600;
-const GROUND_Y = 520;
+// Responsive Game Constants
+let CANVAS_WIDTH = window.innerWidth;
+let CANVAS_HEIGHT = window.innerHeight;
+const LOGICAL_WIDTH = 1200;
+const LOGICAL_HEIGHT = 600;
+let scaleFactor = 1;
+
+let GROUND_Y = LOGICAL_HEIGHT - 80;
 const GRAVITY = 0.9;
 const JUMP_FORCE = -20;
-const INITIAL_GAME_SPEED = 10;
-const SPEED_INCREMENT = 0.005;
+const INITIAL_GAME_SPEED = 5;
+const MAX_GAME_SPEED = 18;
+const SPEED_INCREMENT = 0.002;
 
 // Asset Configuration
 const ASSETS_PATH = './assets/';
@@ -72,8 +78,8 @@ const deadlyImages = {};
 // Background Scrolling Variables
 const background = new Image();
 let bgX1 = 0;
-let bgX2 = CANVAS_WIDTH;
-const BG_SPEED = 2;
+let bgX2 = LOGICAL_WIDTH;
+let currentBgSpeed = INITIAL_GAME_SPEED * 0.2;
 
 // Audio Setup
 const bgm = new Audio(`${ASSETS_PATH}bgm.mp3`);
@@ -265,7 +271,7 @@ class DecorativeItem {
         this.scale = 0.6 + Math.random() * 0.4; // Random scale between 0.6 and 1.0
         this.width = this.img.naturalWidth * this.scale;
         this.height = this.img.naturalHeight * this.scale;
-        this.x = CANVAS_WIDTH + Math.random() * 200;
+        this.x = LOGICAL_WIDTH + Math.random() * 200;
         this.y = GROUND_Y - this.height;
         this.opacity = 0.6 + Math.random() * 0.4; // Slightly transparent for depth
     }
@@ -296,7 +302,7 @@ class DeadlyObstacle {
         this.scale = 0.8 + Math.random() * 0.3; // Scale between 0.8 and 1.1
         this.width = this.img.naturalWidth * this.scale;
         this.height = this.img.naturalHeight * this.scale;
-        this.x = CANVAS_WIDTH;
+        this.x = LOGICAL_WIDTH;
         this.y = GROUND_Y - this.height;
     }
 
@@ -331,8 +337,7 @@ class DeadlyObstacle {
 let player;
 
 function init() {
-    canvas.width = CANVAS_WIDTH;
-    canvas.height = CANVAS_HEIGHT;
+    resizeCanvas();
     player = new Player();
     deadlyObstacles = [];
     decorativeItems = [];
@@ -341,15 +346,34 @@ function init() {
     gameSpeed = INITIAL_GAME_SPEED;
     gameActive = false;
     bgX1 = 0;
-    bgX2 = CANVAS_WIDTH;
+    bgX2 = LOGICAL_WIDTH;
     nextObstacleTimer = 0;
     nextDecorTimer = 0;
 }
 
+function resizeCanvas() {
+    CANVAS_WIDTH = window.innerWidth;
+    CANVAS_HEIGHT = window.innerHeight;
+    canvas.width = CANVAS_WIDTH;
+    canvas.height = CANVAS_HEIGHT;
+    
+    // Determine scale factor based on logical resolution
+    // We'll use a "fit" strategy that maintains aspect ratio or stretches
+    // For this game, stretching slightly or keeping logic fixed is best
+    scaleFactor = Math.min(CANVAS_WIDTH / LOGICAL_WIDTH, CANVAS_HEIGHT / LOGICAL_HEIGHT);
+}
+
+window.addEventListener('resize', resizeCanvas);
+
 function spawnDeadlyObstacle() {
     if (nextObstacleTimer <= 0) {
         deadlyObstacles.push(new DeadlyObstacle());
-        nextObstacleTimer = Math.max(30, 80 - (gameSpeed * 2) + Math.random() * 40);
+        
+        // Calculate dynamic spawn intervals based on current gameSpeed
+        const minGapFrames = 55; 
+        const maxGapFrames = Math.max(minGapFrames + 20, 160 - (gameSpeed * 5));
+        
+        nextObstacleTimer = minGapFrames + Math.random() * (maxGapFrames - minGapFrames);
     }
     nextObstacleTimer--;
 }
@@ -393,12 +417,17 @@ function gameOver() {
 function update() {
     // Background scrolling
     if (gameActive) {
-        bgX1 -= BG_SPEED;
-        bgX2 -= BG_SPEED;
-        if (bgX1 <= -CANVAS_WIDTH) bgX1 = bgX2 + CANVAS_WIDTH;
-        if (bgX2 <= -CANVAS_WIDTH) bgX2 = bgX1 + CANVAS_WIDTH;
-
-        gameSpeed += SPEED_INCREMENT;
+        // Progressive Difficulty: Increase gameSpeed up to MAX_GAME_SPEED
+        if (gameSpeed < MAX_GAME_SPEED) {
+            gameSpeed += SPEED_INCREMENT;
+        }
+        
+        // Sync background speed with game speed (parallax effect)
+        currentBgSpeed = gameSpeed * 0.3;
+        bgX1 -= currentBgSpeed;
+        bgX2 -= currentBgSpeed;
+        if (bgX1 <= -LOGICAL_WIDTH) bgX1 = bgX2 + LOGICAL_WIDTH;
+        if (bgX2 <= -LOGICAL_WIDTH) bgX2 = bgX1 + LOGICAL_WIDTH;
         score += gameSpeed / 50;
         scoreValue.innerText = Math.floor(score).toString().padStart(5, '0');
 
@@ -437,17 +466,25 @@ function update() {
 }
 
 function draw() {
-    ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    ctx.save();
+    
+    // Scale everything to fit the screen
+    const offsetX = (CANVAS_WIDTH - LOGICAL_WIDTH * scaleFactor) / 2;
+    const offsetY = (CANVAS_HEIGHT - LOGICAL_HEIGHT * scaleFactor) / 2;
+    ctx.translate(offsetX, offsetY);
+    ctx.scale(scaleFactor, scaleFactor);
+
+    ctx.clearRect(0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT);
 
     // LAYER 1: Scrolling Background
-    ctx.drawImage(background, bgX1, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-    ctx.drawImage(background, bgX2, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    ctx.drawImage(background, bgX1, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT);
+    ctx.drawImage(background, bgX2, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT);
 
     // LAYER 2: Solid Color Ground
     ctx.fillStyle = '#1a1a1a';
-    ctx.fillRect(0, GROUND_Y, CANVAS_WIDTH, CANVAS_HEIGHT - GROUND_Y);
+    ctx.fillRect(0, GROUND_Y, LOGICAL_WIDTH, LOGICAL_HEIGHT - GROUND_Y);
 
-    // LAYER 3: Decorative Items (behind player & obstacles)
+    // LAYER 3: Decorative Items
     decorativeItems.forEach(item => item.draw());
 
     // LAYER 4: Particles
@@ -459,6 +496,7 @@ function draw() {
     // LAYER 6: Player (on top)
     player.draw();
 
+    ctx.restore();
     frameCount++;
 }
 
@@ -469,13 +507,24 @@ function gameLoop() {
 }
 
 // Input Handling
+function handleInput(e) {
+    if (e.type === 'touchstart') e.preventDefault();
+    
+    if (!gameActive) {
+        if (startScreen.classList.contains('active')) startGame();
+        else if (gameOverScreen.classList.contains('active')) restartGame();
+    } else {
+        player.jump();
+    }
+}
+
 window.addEventListener('keydown', (e) => {
     if (['Space', 'ArrowUp', 'KeyW'].includes(e.code)) {
-        if (!gameActive && startScreen.classList.contains('active')) startGame();
-        else if (gameActive) player.jump();
-        else if (!gameActive && gameOverScreen.classList.contains('active')) restartGame();
+        handleInput(e);
     }
 });
+
+window.addEventListener('touchstart', handleInput, { passive: false });
 
 startBtn.addEventListener('click', startGame);
 restartBtn.addEventListener('click', restartGame);
