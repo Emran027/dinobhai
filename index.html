@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dino Bhai | Endless Runner</title>
+    <meta name="description" content="A high-octane endless runner game built with vanilla JS and Canvas.">
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div id="game-container">
+        <canvas id="game-canvas"></canvas>
+        
+        <div id="ui-layer">
+            <div id="high-score-container">
+                <span class="stat-label">MAX RECORD</span>
+                <span id="high-score-value" class="stat-value">00000</span>
+            </div>
+
+            <div id="score-container">
+                <span class="stat-label">CURRENT DEPTH</span>
+                <span id="score-value" class="stat-value">00000</span>
+            </div>
+
+            <div id="start-screen" class="overlay active">
+                <div class="content">
+                    <h1>DINO BHAI</h1>
+                    <div class="branding">
+                        <span class="company">90'S DREAM</span>
+                        <span class="divider">|</span>
+                        <span class="creator">MD EMRAN HOSSAIN</span>
+                    </div>
+                    <p>Press <span class="key">SPACE</span> or <span class="key">↑</span> to Jump</p>
+                    <button id="start-button">START RUN</button>
+                </div>
+            </div>
+
+            <div id="game-over-screen" class="overlay">
+                <div class="content">
+                    <h1>GAME OVER</h1>
+                    <div class="final-score-box">
+                        <p>FINAL SCORE</p>
+                        <h2 id="final-score-value">0</h2>
+                    </div>
+                    <button id="restart-button">TRY AGAIN</button>
+                    <div class="footer-branding">
+                        A PRODUCTION OF 90'S DREAM
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html>
