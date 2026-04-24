@@ -37,25 +37,56 @@ const ANIMATIONS = {
     IDLE: { prefix: 'Idle', frames: 10, speed: 0.1 }
 };
 
+// Obstacle & Decoration Asset Definitions
+const DECORATIVE_ASSETS = [
+    'Bush (1).png',
+    'Bush (2).png',
+    'DeadBush.png',
+    'Tree.png'
+];
+
+const DEADLY_ASSETS = [
+    'ArrowSign.png',
+    'Crate.png',
+    'Sign.png',
+    'Skeleton.png',
+    'TombStone (1).png',
+    'TombStone (2).png'
+];
+
 // Game State
 let gameActive = false;
 let gameSpeed = INITIAL_GAME_SPEED;
 let score = 0;
-let highScore = localStorage.getItem('dinoDash_highScore') || 0;
+let highScore = localStorage.getItem('dinoBhai_highScore') || 0;
 let particles = [];
-let obstacles = [];
+let deadlyObstacles = [];
+let decorativeItems = [];
 let nextObstacleTimer = 0;
+let nextDecorTimer = 0;
 let frameCount = 0;
 const images = {};
+const decorativeImages = {};
+const deadlyImages = {};
 
 // Background Scrolling Variables
 const background = new Image();
 let bgX1 = 0;
 let bgX2 = CANVAS_WIDTH;
-const BG_SPEED = 2; // Slower speed for parallax effect
+const BG_SPEED = 2;
+
+// Audio Setup
+const bgm = new Audio(`${ASSETS_PATH}bgm.mp3`);
+const jumpSound = new Audio(`${ASSETS_PATH}jump.mp3`);
+const deadSound = new Audio(`${ASSETS_PATH}dead.mp3`);
+
+bgm.loop = true;
+bgm.volume = 0.5;
+jumpSound.volume = 0.4;
+deadSound.volume = 0.6;
 
 /**
- * Preload Assets
+ * Preload all assets
  */
 async function loadAssets() {
     const promises = [];
@@ -75,10 +106,29 @@ async function loadAssets() {
     background.src = `${ASSETS_PATH}bg.png`;
     promises.push(new Promise(resolve => background.onload = resolve));
 
+    // Load decorative item images
+    DECORATIVE_ASSETS.forEach(filename => {
+        const img = new Image();
+        img.src = `${ASSETS_PATH}${filename}`;
+        decorativeImages[filename] = img;
+        promises.push(new Promise(resolve => img.onload = resolve));
+    });
+
+    // Load deadly obstacle images
+    DEADLY_ASSETS.forEach(filename => {
+        const img = new Image();
+        img.src = `${ASSETS_PATH}${filename}`;
+        deadlyImages[filename] = img;
+        promises.push(new Promise(resolve => img.onload = resolve));
+    });
+
     highScoreValue.innerText = Math.floor(highScore).toString().padStart(5, '0');
     await Promise.all(promises);
 }
 
+// ============================================================
+// PARTICLE CLASS
+// ============================================================
 class Particle {
     constructor(x, y, color, speedX, speedY, life = 1) {
         this.x = x;
@@ -106,6 +156,9 @@ class Particle {
     }
 }
 
+// ============================================================
+// PLAYER CLASS
+// ============================================================
 class Player {
     constructor() {
         this.width = 120;
@@ -145,6 +198,7 @@ class Player {
             }
         }
 
+        // Trail particles while running
         if (gameActive && !this.isJumping) {
             if (Math.random() > 0.5) {
                 particles.push(new Particle(this.x + 20, GROUND_Y - 5, '#444', -Math.random() * 5, -Math.random() * 2));
@@ -158,23 +212,28 @@ class Player {
             this.isJumping = true;
             this.state = 'JUMP';
             this.frameIndex = 0;
-            for(let i=0; i<10; i++) {
-                particles.push(new Particle(this.x + 40, this.y + this.height, '#666', (Math.random()-0.5)*5, Math.random()*2));
+            
+            // Play Jump Sound
+            jumpSound.currentTime = 0;
+            jumpSound.play().catch(() => {});
+
+            for (let i = 0; i < 10; i++) {
+                particles.push(new Particle(this.x + 40, this.y + this.height, '#666', (Math.random() - 0.5) * 5, Math.random() * 2));
             }
         }
     }
 
     createImpactParticles() {
-        for(let i=0; i<15; i++) {
-            particles.push(new Particle(this.x + 40, GROUND_Y, '#333', (Math.random()-0.5)*10, -Math.random()*5));
+        for (let i = 0; i < 15; i++) {
+            particles.push(new Particle(this.x + 40, GROUND_Y, '#333', (Math.random() - 0.5) * 10, -Math.random() * 5));
         }
     }
 
     die() {
         this.state = 'DEAD';
         this.frameIndex = 0;
-        for(let i=0; i<50; i++) {
-            particles.push(new Particle(this.x + 60, this.y + 60, '#ff0000', (Math.random()-0.5)*20, (Math.random()-0.5)*20, 2));
+        for (let i = 0; i < 50; i++) {
+            particles.push(new Particle(this.x + 60, this.y + 60, '#ff0000', (Math.random() - 0.5) * 20, (Math.random() - 0.5) * 20, 2));
         }
     }
 
@@ -195,19 +254,20 @@ class Player {
     }
 }
 
-class Obstacle {
+// ============================================================
+// DECORATIVE ITEM CLASS (No collision)
+// ============================================================
+class DecorativeItem {
     constructor() {
-        const types = [
-            { w: 40, h: 80, color: '#333' },
-            { w: 80, h: 50, color: '#444' },
-            { w: 50, h: 50, color: '#222' }
-        ];
-        const type = types[Math.floor(Math.random() * types.length)];
-        this.width = type.w;
-        this.height = type.h;
-        this.x = CANVAS_WIDTH;
+        const filename = DECORATIVE_ASSETS[Math.floor(Math.random() * DECORATIVE_ASSETS.length)];
+        this.img = decorativeImages[filename];
+        // Use the image's natural dimensions, scaled down for the game
+        this.scale = 0.6 + Math.random() * 0.4; // Random scale between 0.6 and 1.0
+        this.width = this.img.naturalWidth * this.scale;
+        this.height = this.img.naturalHeight * this.scale;
+        this.x = CANVAS_WIDTH + Math.random() * 200;
         this.y = GROUND_Y - this.height;
-        this.color = type.color;
+        this.opacity = 0.6 + Math.random() * 0.4; // Slightly transparent for depth
     }
 
     update() {
@@ -215,43 +275,91 @@ class Obstacle {
     }
 
     draw() {
-        ctx.fillStyle = this.color;
-        ctx.shadowBlur = 10;
-        ctx.shadowColor = 'rgba(0,0,0,0.5)';
-        ctx.beginPath();
-        ctx.roundRect(this.x, this.y, this.width, this.height, 5);
-        ctx.fill();
-        ctx.shadowBlur = 0;
+        ctx.globalAlpha = this.opacity;
+        ctx.drawImage(this.img, this.x, this.y, this.width, this.height);
+        ctx.globalAlpha = 1;
     }
 
-    isOffScreen() { return this.x + this.width < 0; }
-
-    getHitbox() {
-        return { x: this.x + 2, y: this.y + 2, w: this.width - 4, h: this.height - 4 };
+    isOffScreen() {
+        return this.x + this.width < 0;
     }
 }
 
+// ============================================================
+// DEADLY OBSTACLE CLASS (Triggers Game Over)
+// ============================================================
+class DeadlyObstacle {
+    constructor() {
+        const filename = DEADLY_ASSETS[Math.floor(Math.random() * DEADLY_ASSETS.length)];
+        this.img = deadlyImages[filename];
+        // Use the image's natural dimensions, scaled for gameplay
+        this.scale = 0.8 + Math.random() * 0.3; // Scale between 0.8 and 1.1
+        this.width = this.img.naturalWidth * this.scale;
+        this.height = this.img.naturalHeight * this.scale;
+        this.x = CANVAS_WIDTH;
+        this.y = GROUND_Y - this.height;
+    }
+
+    update() {
+        this.x -= gameSpeed;
+    }
+
+    draw() {
+        ctx.drawImage(this.img, this.x, this.y, this.width, this.height);
+    }
+
+    isOffScreen() {
+        return this.x + this.width < 0;
+    }
+
+    getHitbox() {
+        // Slightly inset hitbox for fairness
+        const insetX = this.width * 0.15;
+        const insetY = this.height * 0.1;
+        return {
+            x: this.x + insetX,
+            y: this.y + insetY,
+            w: this.width - insetX * 2,
+            h: this.height - insetY * 2
+        };
+    }
+}
+
+// ============================================================
+// GAME FUNCTIONS
+// ============================================================
 let player;
 
 function init() {
     canvas.width = CANVAS_WIDTH;
     canvas.height = CANVAS_HEIGHT;
     player = new Player();
-    obstacles = [];
+    deadlyObstacles = [];
+    decorativeItems = [];
     particles = [];
     score = 0;
     gameSpeed = INITIAL_GAME_SPEED;
     gameActive = false;
     bgX1 = 0;
     bgX2 = CANVAS_WIDTH;
+    nextObstacleTimer = 0;
+    nextDecorTimer = 0;
 }
 
-function spawnObstacle() {
+function spawnDeadlyObstacle() {
     if (nextObstacleTimer <= 0) {
-        obstacles.push(new Obstacle());
+        deadlyObstacles.push(new DeadlyObstacle());
         nextObstacleTimer = Math.max(30, 80 - (gameSpeed * 2) + Math.random() * 40);
     }
     nextObstacleTimer--;
+}
+
+function spawnDecorativeItem() {
+    if (nextDecorTimer <= 0) {
+        decorativeItems.push(new DecorativeItem());
+        nextDecorTimer = 40 + Math.random() * 120; // More spread out than deadly ones
+    }
+    nextDecorTimer--;
 }
 
 function checkCollision(rect1, rect2) {
@@ -265,9 +373,14 @@ function gameOver() {
     gameActive = false;
     player.die();
     
+    // Play Death Sound and Pause BGM
+    bgm.pause();
+    deadSound.currentTime = 0;
+    deadSound.play().catch(() => {});
+    
     if (score > highScore) {
         highScore = score;
-        localStorage.setItem('dinoDash_highScore', highScore);
+        localStorage.setItem('dinoBhai_highScore', highScore);
         highScoreValue.innerText = Math.floor(highScore).toString().padStart(5, '0');
     }
 
@@ -278,12 +391,10 @@ function gameOver() {
 }
 
 function update() {
-    // Infinite Background Scrolling Logic
+    // Background scrolling
     if (gameActive) {
         bgX1 -= BG_SPEED;
         bgX2 -= BG_SPEED;
-
-        // Reset positions for seamless loop
         if (bgX1 <= -CANVAS_WIDTH) bgX1 = bgX2 + CANVAS_WIDTH;
         if (bgX2 <= -CANVAS_WIDTH) bgX2 = bgX1 + CANVAS_WIDTH;
 
@@ -291,42 +402,61 @@ function update() {
         score += gameSpeed / 50;
         scoreValue.innerText = Math.floor(score).toString().padStart(5, '0');
 
-        spawnObstacle();
+        // Spawn decorative items (no collision)
+        spawnDecorativeItem();
 
-        obstacles.forEach((obs, index) => {
-            obs.update();
-            if (obs.isOffScreen()) {
-                obstacles.splice(index, 1);
+        // Spawn deadly obstacles (collision checked)
+        spawnDeadlyObstacle();
+
+        // Update decorative items
+        for (let i = decorativeItems.length - 1; i >= 0; i--) {
+            decorativeItems[i].update();
+            if (decorativeItems[i].isOffScreen()) {
+                decorativeItems.splice(i, 1);
             }
-            if (checkCollision(player.getHitbox(), obs.getHitbox())) {
+        }
+
+        // Update deadly obstacles & check collision ONLY with these
+        for (let i = deadlyObstacles.length - 1; i >= 0; i--) {
+            deadlyObstacles[i].update();
+            if (deadlyObstacles[i].isOffScreen()) {
+                deadlyObstacles.splice(i, 1);
+            } else if (checkCollision(player.getHitbox(), deadlyObstacles[i].getHitbox())) {
                 gameOver();
             }
-        });
+        }
     }
 
     player.update();
     
-    particles.forEach((p, i) => {
-        p.update();
-        if (p.life <= 0) particles.splice(i, 1);
-    });
+    // Update particles
+    for (let i = particles.length - 1; i >= 0; i--) {
+        particles[i].update();
+        if (particles[i].life <= 0) particles.splice(i, 1);
+    }
 }
 
 function draw() {
-    // Clear Canvas
     ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
-    // 1. Draw Scrolling Background (Side-by-side)
+    // LAYER 1: Scrolling Background
     ctx.drawImage(background, bgX1, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
     ctx.drawImage(background, bgX2, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
-    // 2. Draw Solid Color Ground
+    // LAYER 2: Solid Color Ground
     ctx.fillStyle = '#1a1a1a';
     ctx.fillRect(0, GROUND_Y, CANVAS_WIDTH, CANVAS_HEIGHT - GROUND_Y);
 
-    // 3. Draw Entities (Obstacles, Particles, Player)
+    // LAYER 3: Decorative Items (behind player & obstacles)
+    decorativeItems.forEach(item => item.draw());
+
+    // LAYER 4: Particles
     particles.forEach(p => p.draw());
-    obstacles.forEach(obs => obs.draw());
+
+    // LAYER 5: Deadly Obstacles
+    deadlyObstacles.forEach(obs => obs.draw());
+
+    // LAYER 6: Player (on top)
     player.draw();
 
     frameCount++;
@@ -338,7 +468,7 @@ function gameLoop() {
     requestAnimationFrame(gameLoop);
 }
 
-// Input
+// Input Handling
 window.addEventListener('keydown', (e) => {
     if (['Space', 'ArrowUp', 'KeyW'].includes(e.code)) {
         if (!gameActive && startScreen.classList.contains('active')) startGame();
@@ -353,14 +483,23 @@ restartBtn.addEventListener('click', restartGame);
 function startGame() {
     startScreen.classList.remove('active');
     gameActive = true;
+    
+    // Start Background Music
+    bgm.currentTime = 0;
+    bgm.play().catch(() => {});
 }
 
 function restartGame() {
     gameOverScreen.classList.remove('active');
     init();
     gameActive = true;
+    
+    // Reset and Play BGM
+    bgm.currentTime = 0;
+    bgm.play().catch(() => {});
 }
 
+// Initialize
 loadAssets().then(() => {
     init();
     gameLoop();
